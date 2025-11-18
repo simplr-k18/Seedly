@@ -14,6 +14,7 @@ export interface Framework {
 export interface GeneratedPlan {
   frameworkId: FrameworkId;
   data: any;
+  originalPrompt: string; // Added for edit capability
 }
 
 // Specific data types for each framework for type safety

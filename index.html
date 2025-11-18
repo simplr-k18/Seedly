@@ -5,30 +5,67 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Seedly</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+          theme: {
+            extend: {
+              fontFamily: {
+                sans: ['Inter', 'sans-serif'],
+                mono: ['JetBrains Mono', 'monospace'],
+              },
+              colors: {
+                gray: {
+                  850: '#1a1a1a',
+                  900: '#101010',
+                  950: '#0a0a0a',
+                },
+                tech: {
+                  amber: '#FFB000',
+                  cyan: '#00F0FF',
+                  slate: '#8892b0',
+                }
+              },
+              animation: {
+                'spin-slow': 'spin 3s linear infinite',
+                'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                'scan': 'scan 4s linear infinite',
+              },
+              keyframes: {
+                scan: {
+                  '0%': { transform: 'translateY(-100%)' },
+                  '100%': { transform: 'translateY(100%)' }
+                }
+              }
+            },
+          },
+        }
+    </script>
     <style>
         :root {
-            --color-bg: #101010;
+            --color-bg: #0a0a0a;
             --color-text: #e0e0e0;
-            --color-text-muted: #888888;
-            --color-accent-magenta: #f0f;
-            --color-accent-cyan: #0ff;
-            --color-accent-lime: #0f0;
-            --color-accent-orange: #f90;
             --color-border: #333;
         }
 
         body {
             background-color: var(--color-bg);
             color: var(--color-text);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-            overflow: hidden; /* Hide body scrollbars to let canvas take over */
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
         }
         
+        /* Tech aesthetics */
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
         #app-container {
             position: relative;
             z-index: 1;
             height: 100vh;
             overflow-y: auto;
+            background: radial-gradient(circle at 50% 50%, #111 0%, #050505 100%);
         }
         
         #background-canvas {
@@ -38,21 +75,44 @@
             width: 100%;
             height: 100%;
             z-index: 0;
+            opacity: 0.4;
+            pointer-events: none;
         }
 
-        /* Custom scrollbar for better aesthetics */
+        /* Scanline effect */
+        .scanline::before {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 2;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+
+        .glass-panel {
+            background: rgba(16, 16, 16, 0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Custom scrollbar */
         ::-webkit-scrollbar {
-            width: 8px;
+            width: 6px;
         }
         ::-webkit-scrollbar-track {
-            background: #1a1a1a;
+            background: #050505;
         }
         ::-webkit-scrollbar-thumb {
-            background: #444;
-            border-radius: 4px;
+            background: #333;
+            border-radius: 0px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: #666;
+            background: #555;
         }
 
         @keyframes fadeIn {
@@ -61,105 +121,93 @@
         }
 
         .fade-in {
-            animation: fadeIn 0.5s ease-out forwards;
+            animation: fadeIn 0.6s ease-out forwards;
         }
     </style>
 <script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.0/client",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1"
+    "react/": "https://aistudiocdn.com/react@^19.2.0/"
   }
 }
 </script>
 </head>
 <body>
     <canvas id="background-canvas"></canvas>
-    <div id="root"></div>
+    <div id="root" class="scanline h-full"></div>
     <script type="module" src="/index.tsx"></script>
     <script>
-      // Dots and Lines background animation script
       const canvas = document.getElementById('background-canvas');
       const ctx = canvas.getContext('2d');
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      
+      let width, height;
+      let particles = [];
 
-      let dots = [];
-      const numDots = Math.floor((canvas.width * canvas.height) / 15000);
-      const dotColor = 'rgba(100, 100, 100, 0.5)';
-      const lineColor = 'rgba(100, 100, 100, 0.2)';
-
-      class Dot {
-        constructor(x, y, vx, vy) {
-          this.x = x;
-          this.y = y;
-          this.vx = vx;
-          this.vy = vy;
-          this.radius = Math.random() * 1.5 + 0.5;
-        }
-
-        draw() {
-          ctx.beginPath();
-          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-          ctx.fillStyle = dotColor;
-          ctx.fill();
-        }
-
-        update() {
-          this.x += this.vx;
-          this.y += this.vy;
-
-          if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
-          if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
-        }
+      function resize() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+        initParticles();
       }
 
-      function init() {
-        dots = [];
-        for (let i = 0; i < numDots; i++) {
-          const x = Math.random() * canvas.width;
-          const y = Math.random() * canvas.height;
-          const vx = (Math.random() - 0.5) * 0.5;
-          const vy = (Math.random() - 0.5) * 0.5;
-          dots.push(new Dot(x, y, vx, vy));
-        }
-      }
-
-      function connect() {
-        for (let i = 0; i < numDots; i++) {
-          for (let j = i + 1; j < numDots; j++) {
-            const dist = Math.sqrt((dots[i].x - dots[j].x) ** 2 + (dots[i].y - dots[j].y) ** 2);
-            if (dist < 120) {
-              ctx.beginPath();
-              ctx.moveTo(dots[i].x, dots[i].y);
-              ctx.lineTo(dots[j].x, dots[j].y);
-              ctx.strokeStyle = lineColor;
-              ctx.lineWidth = 0.5;
-              ctx.stroke();
-            }
-          }
+      function initParticles() {
+        particles = [];
+        const count = Math.floor((width * height) / 20000);
+        for(let i=0; i<count; i++) {
+            particles.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                vx: (Math.random() - 0.5) * 0.2,
+                vy: (Math.random() - 0.5) * 0.2,
+                size: Math.random() * 1.5
+            });
         }
       }
 
       function animate() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        dots.forEach(dot => {
-          dot.update();
-          dot.draw();
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = 'rgba(100, 100, 100, 0.3)';
+        
+        particles.forEach(p => {
+            p.x += p.vx;
+            p.y += p.vy;
+            
+            if(p.x < 0) p.x = width;
+            if(p.x > width) p.x = 0;
+            if(p.y < 0) p.y = height;
+            if(p.y > height) p.y = 0;
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
         });
-        connect();
+
+        // Draw subtle grid lines
+        ctx.strokeStyle = 'rgba(50, 50, 50, 0.1)';
+        ctx.lineWidth = 1;
+        const gridSize = 100;
+        
+        // Only draw a few grid lines for performance/aesthetic
+        /*
+        for(let x = 0; x < width; x += gridSize) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+            ctx.stroke();
+        }
+        */
+
         requestAnimationFrame(animate);
       }
 
-      window.addEventListener('resize', () => {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        init();
-      });
-
-      init();
+      window.addEventListener('resize', resize);
+      resize();
       animate();
     </script>
 </body>
